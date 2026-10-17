@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      break:
+        description: "Deploy a broken image on purpose, to prove diagnostics are collected"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Render manifests
+        run: kubectl kustomize deploy/base > rendered.yaml
+      - name: Validate against the Kubernetes schemas (kubeconform)
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+          ./kubeconform -strict -summary -kubernetes-version 1.33.0 rendered.yaml
+      - name: Shell scripts
+        run: shellcheck tests/*.sh scripts/*.sh
+
+  e2e:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Three supported Kubernetes minor versions; each gets its own throwaway cluster.
+        k8s: [v1.32.2, v1.33.1, v1.34.0]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the image
+        run: docker build --build-arg APP_VERSION="${GITHUB_SHA}" -t webapp:ci app
+
+      - name: Create a kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: e2e
+          node_image: kindest/node:${{ matrix.k8s }}
+          wait: 120s
+
+      - name: Load the image into the cluster
+        run: kind load docker-image webapp:ci --name e2e
+
+      - name: End-to-end test
+        env:
+          BREAK: ${{ inputs.break }}
+        run: tests/e2e.sh "${GITHUB_SHA}"
+
+      - name: Collect diagnostics
+        if: failure()
+        run: scripts/diagnostics.sh diagnostics
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: diagnostics-${{ matrix.k8s }}
+          path: diagnostics
+          if-no-files-found: ignore

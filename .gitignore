@@ -1,0 +1,4 @@
+.terraform/
+rendered.yaml
+diagnostics/
+kubeconform
