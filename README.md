@@ -1,6 +1,6 @@
 # k8s-kind-e2e-matrix
 
-![ci](https://github.com/Sup3rMar10/k8s-kind-e2e-matrix/actions/workflows/ci.yml/badge.svg)
+![ci](https://github.com/Supp3r-Man/k8s-kind-e2e-matrix/actions/workflows/ci.yml/badge.svg)
 
 A pull-request pipeline that builds an image, creates a throwaway [kind](https://kind.sigs.k8s.io/) cluster **per Kubernetes version**, deploys the manifests, runs end-to-end tests including a bad release and a rollback, and uploads diagnostics when anything fails.
 
